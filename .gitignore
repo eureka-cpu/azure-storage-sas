@@ -1,2 +1,6 @@
 /target
 /.claude
+/dev-certs
+# Azurite artifacts
+__*
+AzuriteConfig

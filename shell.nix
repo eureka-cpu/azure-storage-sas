@@ -6,5 +6,6 @@ pkgs.mkShell {
     clippy
     rustfmt
     rust-analyzer
+    azurite
   ];
 }

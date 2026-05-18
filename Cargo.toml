@@ -11,11 +11,16 @@ sha2 = "0.10"
 base64 = { version = "0.22" }
 time = { version = "0.3", features = ["formatting", "macros"] }
 url = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 quick-xml = { version = "0.36", features = ["serialize"] }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 uuid = { version = "1", features = ["std"] }
 
 [dev-dependencies]
+async-trait = "0.1"
+azure_storage_blob = "1"
 time = { version = "0.3", features = ["formatting", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

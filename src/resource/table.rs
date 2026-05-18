@@ -17,7 +17,7 @@ use url::Url;
 use crate::{
     error::SasError,
     resource::{Resource, sealed},
-    sas::{SasSigningContext, SasUrlParams, append_common_sas_params},
+    sas::{SasSigningContext, SasUrlParams, append_common_sas_params, append_path},
 };
 
 /// Minimum API version for Table Storage user delegation SAS.
@@ -152,7 +152,7 @@ impl sealed::Resource for TableResource {
         .to_string()
     }
     fn sas_url(&self, account_endpoint: &Url, params: &SasUrlParams<'_>) -> Result<Url, SasError> {
-        let mut url = account_endpoint.join(&self.table)?;
+        let mut url = append_path(account_endpoint, &self.table);
         let opts = self.options.as_ref();
         let mut q = url.query_pairs_mut();
         q.append_pair("sv", params.version)

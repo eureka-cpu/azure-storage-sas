@@ -57,6 +57,19 @@ pub(crate) struct SasSigningContext<'a> {
     pub delegated_user_object_id: Option<&'a str>,
 }
 
+/// Appends `rel` to the path of `base`, treating `base`'s path as a directory prefix.
+///
+/// `Url::join` follows RFC 3986 and strips the last path segment of the base before
+/// resolving a relative reference. That works fine when the base has no meaningful path
+/// (e.g. `https://account.blob.core.windows.net`), but breaks for Azurite-style emulator
+/// endpoints like `https://127.0.0.1:10000/devstoreaccount1` — join would discard
+/// `devstoreaccount1`. This helper avoids that by building the path directly.
+pub(crate) fn append_path(base: &url::Url, rel: &str) -> url::Url {
+    let mut url = base.clone();
+    url.set_path(&format!("{}/{}", base.path().trim_end_matches('/'), rel));
+    url
+}
+
 pub(crate) fn append_common_sas_params<T: url::form_urlencoded::Target>(
     query: &mut url::form_urlencoded::Serializer<'_, T>,
     params: &SasUrlParams<'_>,

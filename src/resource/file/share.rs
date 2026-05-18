@@ -6,7 +6,7 @@ use crate::{
     error::SasError,
     file::{FILE_MIN_VERSION, FileResourceOptions, FileStringToSign},
     resource::{Resource, sealed},
-    sas::{SasSigningContext, SasUrlParams, append_common_sas_params},
+    sas::{SasSigningContext, SasUrlParams, append_common_sas_params, append_path},
 };
 
 /// Permissions for an Azure Share SAS token.
@@ -82,7 +82,7 @@ impl sealed::Resource for ShareResource {
         .to_string()
     }
     fn sas_url(&self, account_endpoint: &Url, params: &SasUrlParams<'_>) -> Result<Url, SasError> {
-        let mut url = account_endpoint.join(&self.share)?;
+        let mut url = append_path(account_endpoint, &self.share);
         let opts = self.options.as_ref();
         let mut q = url.query_pairs_mut();
         q.append_pair("sv", params.version).append_pair("sr", "s");

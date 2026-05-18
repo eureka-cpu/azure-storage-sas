@@ -14,7 +14,7 @@ use url::Url;
 use crate::{
     error::SasError,
     resource::{Resource, sealed},
-    sas::{SasSigningContext, SasUrlParams, append_common_sas_params},
+    sas::{SasSigningContext, SasUrlParams, append_common_sas_params, append_path},
 };
 
 /// Minimum API version for Queue Storage user delegation SAS.
@@ -112,7 +112,7 @@ impl sealed::Resource for QueueResource {
         QueueStringToSign { ctx }.to_string()
     }
     fn sas_url(&self, account_endpoint: &Url, params: &SasUrlParams<'_>) -> Result<Url, SasError> {
-        let mut url = account_endpoint.join(&self.queue)?;
+        let mut url = append_path(account_endpoint, &self.queue);
         let mut q = url.query_pairs_mut();
         q.append_pair("sv", params.version);
         append_common_sas_params(&mut q, params);

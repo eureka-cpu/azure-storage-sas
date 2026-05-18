@@ -6,7 +6,7 @@ use crate::{
     blob::{BLOB_DEFAULT_VERSION, BlobResourceOptions, BlobStringToSign},
     error::SasError,
     resource::{Resource, sealed},
-    sas::{SasSigningContext, SasUrlParams, append_common_sas_params},
+    sas::{SasSigningContext, SasUrlParams, append_common_sas_params, append_path},
 };
 
 /// Permissions for a Blob Storage Container SAS token.
@@ -126,7 +126,7 @@ impl sealed::Resource for ContainerResource {
         .to_string()
     }
     fn sas_url(&self, account_endpoint: &Url, params: &SasUrlParams<'_>) -> Result<Url, SasError> {
-        let mut url = account_endpoint.join(&self.container)?;
+        let mut url = append_path(account_endpoint, &self.container);
         let opts = self.options.as_ref();
         let mut q = url.query_pairs_mut();
         q.append_pair("sv", params.version).append_pair("sr", "c");

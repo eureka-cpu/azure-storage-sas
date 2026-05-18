@@ -8,7 +8,7 @@ use crate::{
     },
     error::SasError,
     resource::{Resource, sealed},
-    sas::{SasSigningContext, SasUrlParams, append_common_sas_params},
+    sas::{SasSigningContext, SasUrlParams, append_common_sas_params, append_path},
 };
 
 /// A specific blob snapshot (`sr=bs`). Requires [`BLOB_DEFAULT_VERSION`] or later.
@@ -59,7 +59,10 @@ impl sealed::Resource for BlobSnapshotResource {
     }
     fn sas_url(&self, account_endpoint: &Url, params: &SasUrlParams<'_>) -> Result<Url, SasError> {
         let snapshot_time_str = format_blob_time(self.snapshot_time);
-        let mut url = account_endpoint.join(&format!("{}/{}", self.container, self.blob))?;
+        let mut url = append_path(
+            account_endpoint,
+            &format!("{}/{}", self.container, self.blob),
+        );
         let opts = self.options.as_ref();
         let mut q = url.query_pairs_mut();
         q.append_pair("sv", params.version)
