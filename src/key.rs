@@ -75,8 +75,7 @@ impl UserDelegationKey {
             .map(|t| format!("<DelegatedUserTid>{t}</DelegatedUserTid>"))
             .unwrap_or_default();
         let xml_body = format!(
-            r#"
-                <?xml version="1.0" encoding="utf-8"?>
+            r#"<?xml version="1.0" encoding="utf-8"?>
                 <KeyInfo>
                     <Start>{start_str}</Start>
                     <Expiry>{expiry_str}</Expiry>
