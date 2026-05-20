@@ -366,6 +366,7 @@ impl<R: Resource> UserDelegationSasBuilder<R, UserDelegationKey> {
             authorized_user_object_id: saoid.as_deref(),
             unauthorized_user_object_id: suoid.as_deref(),
             delegated_user_object_id: sduoid.as_deref(),
+            delegated_user_tenant_id: skdutid.as_deref(),
         };
         let s2s = self.resource.string_to_sign(&ctx);
         let sig = key.compute_signature(&s2s)?;

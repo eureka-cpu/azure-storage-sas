@@ -55,6 +55,7 @@ pub(crate) struct SasSigningContext<'a> {
     pub authorized_user_object_id: Option<&'a str>,
     pub unauthorized_user_object_id: Option<&'a str>,
     pub delegated_user_object_id: Option<&'a str>,
+    pub delegated_user_tenant_id: Option<&'a str>,
 }
 
 /// Appends `rel` to the path of `base`, treating `base`'s path as a directory prefix.
