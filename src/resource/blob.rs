@@ -212,23 +212,25 @@ impl std::fmt::Display for BlobStringToSign<'_> {
             fields.push(ctx.delegated_user_object_id.unwrap_or("")); // [14] sduoid
         }
         fields.extend_from_slice(&[
-            ctx.ip.unwrap_or(""),                   // [13/15] signedIP
-            ctx.protocol.as_str(),                  // [14/16] signedProtocol
-            ctx.version,                            // [15/17] signedVersion
-            self.sr,                                // [16/18] signedResource
-            self.snapshot_time,                     // [17/19] signedSnapshotTime
-            self.encryption_scope.unwrap_or(""),    // [18/20] signedEncryptionScope
-            self.cache_control.unwrap_or(""),       // [19/21] rscc
-            self.content_disposition.unwrap_or(""), // [20/22] rscd
-            self.content_encoding.unwrap_or(""),    // [21/23] rsce
-            self.content_language.unwrap_or(""),    // [22/24] rscl
-            self.content_type.unwrap_or(""),        // [23/25] rsct
+            ctx.ip.unwrap_or(""),                // [13/15] signedIP
+            ctx.protocol.as_str(),               // [14/16] signedProtocol
+            ctx.version,                         // [15/17] signedVersion
+            self.sr,                             // [16/18] signedResource
+            self.snapshot_time,                  // [17/19] signedSnapshotTime
+            self.encryption_scope.unwrap_or(""), // [18/20] signedEncryptionScope
         ]);
-        // 2026-04-06+: required request headers/query params appended at the end.
+        // 2026-04-06+: srh/srq are inserted BEFORE rscc per the spec ordering.
         if ctx.version >= "2026-04-06" {
-            fields.push(self.signed_request_headers.unwrap_or("")); // [24/26] srh
-            fields.push(self.signed_request_query_parameters.unwrap_or("")); // [25/27] srq
+            fields.push(self.signed_request_headers.unwrap_or("")); // [21] srh
+            fields.push(self.signed_request_query_parameters.unwrap_or("")); // [22] srq
         }
+        fields.extend_from_slice(&[
+            self.cache_control.unwrap_or(""),       // [19/21/23] rscc
+            self.content_disposition.unwrap_or(""), // [20/22/24] rscd
+            self.content_encoding.unwrap_or(""),    // [21/23/25] rsce
+            self.content_language.unwrap_or(""),    // [22/24/26] rscl
+            self.content_type.unwrap_or(""),        // [23/25/27] rsct
+        ]);
         write!(f, "{}", fields.join("\n"))
     }
 }
@@ -374,10 +376,10 @@ mod tests {
             "[17] signedVersion"
         );
         assert_eq!(parts[18], "b", "[18] signedResource");
-        assert_eq!(parts[21], "", "[21] rscc — empty");
-        assert_eq!(parts[25], "", "[25] rsct — empty");
-        assert_eq!(parts[26], "", "[26] srh — empty");
-        assert_eq!(parts[27], "", "[27] srq — empty");
+        assert_eq!(parts[21], "", "[21] srh — empty");
+        assert_eq!(parts[22], "", "[22] srq — empty");
+        assert_eq!(parts[23], "", "[23] rscc — empty");
+        assert_eq!(parts[27], "", "[27] rsct — empty");
     }
 
     #[test]
@@ -518,9 +520,11 @@ mod tests {
         let parts: Vec<&str> = s2s.split('\n').collect();
         assert_eq!(parts[15], "10.0.0.1", "[15] signedIP");
         assert_eq!(parts[20], "myscope", "[20] signedEncryptionScope");
-        assert_eq!(parts[21], "no-cache", "[21] rscc");
-        assert_eq!(parts[22], "", "[22] rscd — empty");
-        assert_eq!(parts[25], "application/octet-stream", "[25] rsct");
+        assert_eq!(parts[21], "", "[21] srh — empty");
+        assert_eq!(parts[22], "", "[22] srq — empty");
+        assert_eq!(parts[23], "no-cache", "[23] rscc");
+        assert_eq!(parts[24], "", "[24] rscd — empty");
+        assert_eq!(parts[27], "application/octet-stream", "[27] rsct");
 
         let sig = key.compute_signature(&s2s).unwrap();
         let endpoint = Url::parse(&format!("https://{}.blob.core.windows.net", ACCOUNT)).unwrap();
@@ -580,8 +584,8 @@ mod tests {
         };
         let s2s = resource.string_to_sign(&ctx);
         let parts: Vec<&str> = s2s.split('\n').collect();
-        assert_eq!(parts[26], "x-ms-date,x-ms-version", "[26] srh");
-        assert_eq!(parts[27], "comp,restype", "[27] srq");
+        assert_eq!(parts[21], "x-ms-date,x-ms-version", "[21] srh");
+        assert_eq!(parts[22], "comp,restype", "[22] srq");
 
         let sig = key.compute_signature(&s2s).unwrap();
         let endpoint = Url::parse(&format!("https://{}.blob.core.windows.net", ACCOUNT)).unwrap();
