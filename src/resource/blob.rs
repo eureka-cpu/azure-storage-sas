@@ -205,6 +205,7 @@ impl std::fmt::Display for BlobStringToSign<'_> {
             ctx.unauthorized_user_object_id.unwrap_or(""), // [11] signedUnauthorizedUserObjectId
             self.correlation_id.unwrap_or(""),             // [12] signedCorrelationId
         ];
+        // YYYY-MM-DD strings sort lexicographically in chronological order, so >= is correct.
         // 2025-07-05+: delegated user tenant/object IDs added before IP.
         if ctx.version >= "2025-07-05" {
             fields.push(ctx.delegated_user_tenant_id.unwrap_or("")); // [13] skdutid
