@@ -145,18 +145,19 @@ mod tests {
             authorized_user_object_id: None,
             unauthorized_user_object_id: None,
             delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
         let parts: Vec<&str> = s2s.split('\n').collect();
         assert_eq!(
             parts.len(),
-            26,
-            "blob snapshot string-to-sign must have 26 fields"
+            28,
+            "blob snapshot string-to-sign must have 28 fields"
         );
-        assert_eq!(parts[16], "bs", "[16] signedResource");
+        assert_eq!(parts[18], "bs", "[18] signedResource");
         assert_eq!(
-            parts[17], "2024-01-15T12:00:00.0000000Z",
-            "[17] signedSnapshotTime"
+            parts[19], "2024-01-15T12:00:00.0000000Z",
+            "[19] signedSnapshotTime"
         );
     }
 
@@ -177,6 +178,7 @@ mod tests {
             authorized_user_object_id: None,
             unauthorized_user_object_id: None,
             delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
         let sig = key.compute_signature(&s2s).unwrap();

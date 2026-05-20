@@ -32,11 +32,13 @@
 //! cargo run --example blob_sas_required_headers
 //! ```
 
+#[path = "common/mod.rs"]
+mod common;
+
 use std::sync::Arc;
 
 use azure_core::{
     Bytes,
-    credentials::{AccessToken, TokenCredential, TokenRequestOptions},
     http::{ClientOptions, Transport},
 };
 use azure_storage_blob::{
@@ -48,44 +50,6 @@ use azure_storage_sas::{
 };
 use time::{Duration, OffsetDateTime};
 use url::Url;
-
-const ACCOUNT: &str = "devstoreaccount1";
-const BLOB_ENDPOINT: &str = "https://127.0.0.1:10000/devstoreaccount1";
-
-/// A minimal unsigned JWT that Azurite's `--oauth basic` mode accepts.
-///
-/// Header:  {"alg":"none","typ":"JWT"}
-/// Payload: {"aud":"https://storage.azure.com","iss":"https://sts.windows.net/tid-test/",
-///           "iat":1000000000,"nbf":1000000000,"exp":9999999999,
-///           "oid":"oid-test","tid":"tid-test"}
-///
-/// Azurite validates that `iss` starts with a known STS prefix, and that `iat`, `nbf`,
-/// and `exp` are all present. The signature part is empty (`alg: none`).
-const DUMMY_JWT: &str = concat!(
-    "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0",
-    ".",
-    "eyJhdWQiOiJodHRwczovL3N0b3JhZ2UuYXp1cmUuY29tIiwiaXNzIjoiaHR0cHM6Ly9zdHMud2luZG93cy5uZXQvdGlkLXRlc3QvIiwiaWF0IjoxMDAwMDAwMDAwLCJuYmYiOjEwMDAwMDAwMDAsImV4cCI6OTk5OTk5OTk5OSwib2lkIjoib2lkLXRlc3QiLCJ0aWQiOiJ0aWQtdGVzdCJ9",
-    "."
-);
-
-/// Implements [`TokenCredential`] by returning [`DUMMY_JWT`], which Azurite accepts in
-/// `--oauth basic` mode without signature validation.
-#[derive(Debug)]
-struct DummyCredential;
-
-#[async_trait::async_trait]
-impl TokenCredential for DummyCredential {
-    async fn get_token(
-        &self,
-        _scopes: &[&str],
-        _options: Option<TokenRequestOptions<'_>>,
-    ) -> azure_core::Result<AccessToken> {
-        Ok(AccessToken::new(
-            DUMMY_JWT,
-            OffsetDateTime::now_utc() + Duration::hours(1),
-        ))
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -100,18 +64,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     const BLOB: &str = "restricted-upload.txt";
     const CONTENT: &str = "Uploaded with a SAS that requires x-ms-blob-type";
 
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()?;
+    let transport = Transport::new(Arc::new(client.clone()));
+
     // Create a service client authenticated with a Bearer token credential.
     // `danger_accept_invalid_certs` is needed for Azurite's self-signed TLS cert.
     let service = BlobServiceClient::new(
-        Url::parse(BLOB_ENDPOINT)?,
-        Some(Arc::new(DummyCredential)),
+        Url::parse(common::BLOB_ENDPOINT)?,
+        Some(Arc::new(common::DummyCredential)),
         Some(BlobServiceClientOptions {
             client_options: ClientOptions {
-                transport: Some(Transport::new(Arc::new(
-                    reqwest::Client::builder()
-                        .danger_accept_invalid_certs(true)
-                        .build()?,
-                ))),
+                transport: Some(transport.clone()),
                 ..Default::default()
             },
             ..Default::default()
@@ -126,13 +91,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Obtain a user delegation key.
     tracing::info!("fetching user delegation key");
-    let key = UserDelegationKeyFetcher::new(ACCOUNT, Arc::new(DummyCredential))
-        .endpoint(Url::parse(BLOB_ENDPOINT)?)
-        .http_client(
-            reqwest::Client::builder()
-                .danger_accept_invalid_certs(true)
-                .build()?,
-        )
+    let key = UserDelegationKeyFetcher::new(common::ACCOUNT, Arc::new(common::DummyCredential))
+        .endpoint(Url::parse(common::BLOB_ENDPOINT)?)
+        .http_client(client)
         .fetch()
         .await?;
     tracing::info!(oid = %key.signed_oid, expiry = %key.signed_expiry, "delegation key obtained");
@@ -143,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The header name is signed into the string-to-sign and appears as `srh` in the URL.
     // Azure Storage will reject any request that omits a listed required header.
     let write_url = UserDelegationSasBuilder::new(
-        ACCOUNT,
+        common::ACCOUNT,
         BlobResource {
             container: CONTAINER.into(),
             blob: BLOB.into(),
@@ -159,7 +120,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         expiry,
     )
-    .endpoint(Url::parse(BLOB_ENDPOINT)?)
+    .endpoint(Url::parse(common::BLOB_ENDPOINT)?)
+    .signed_version("2025-07-05")
     .with_key(key.clone())
     .build()?;
 
@@ -178,11 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         Some(BlobClientOptions {
             client_options: ClientOptions {
-                transport: Some(Transport::new(Arc::new(
-                    reqwest::Client::builder()
-                        .danger_accept_invalid_certs(true)
-                        .build()?,
-                ))),
+                transport: Some(transport.clone()),
                 ..Default::default()
             },
             ..Default::default()
@@ -194,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Read back to verify.
     let read_url = UserDelegationSasBuilder::new(
-        ACCOUNT,
+        common::ACCOUNT,
         BlobResource {
             container: CONTAINER.into(),
             blob: BLOB.into(),
@@ -206,7 +164,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         expiry,
     )
-    .endpoint(Url::parse(BLOB_ENDPOINT)?)
+    .endpoint(Url::parse(common::BLOB_ENDPOINT)?)
+    .signed_version("2025-07-05")
     .with_key(key)
     .build()?;
 
@@ -215,11 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         Some(BlobClientOptions {
             client_options: ClientOptions {
-                transport: Some(Transport::new(Arc::new(
-                    reqwest::Client::builder()
-                        .danger_accept_invalid_certs(true)
-                        .build()?,
-                ))),
+                transport: Some(transport),
                 ..Default::default()
             },
             ..Default::default()

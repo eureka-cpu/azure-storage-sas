@@ -14,7 +14,6 @@ pub(crate) fn make_key() -> UserDelegationKey {
         signed_expiry: "2099-01-08T00:00:00Z".to_string(),
         signed_service: "b".to_string(),
         signed_version: "2022-11-02".to_string(),
-        signed_delegated_user_tid: None,
         // 32 zero bytes in standard base64
         value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
     }

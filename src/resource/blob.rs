@@ -189,39 +189,47 @@ pub(crate) struct BlobStringToSign<'a> {
 impl std::fmt::Display for BlobStringToSign<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ctx = self.ctx;
-        write!(
-            f,
-            "{}",
-            [
-                ctx.permissions,                                    // [0]  signedPermissions
-                ctx.start,                                          // [1]  signedStart
-                ctx.expiry,                                         // [2]  signedExpiry
-                ctx.canon,                                          // [3]  canonicalizedResource
-                &ctx.key.signed_oid,                                // [4]  signedKeyObjectId
-                &ctx.key.signed_tid,                                // [5]  signedKeyTenantId
-                &ctx.key.signed_start,                              // [6]  signedKeyStart
-                &ctx.key.signed_expiry,                             // [7]  signedKeyExpiry
-                &ctx.key.signed_service,                            // [8]  signedKeyService
-                &ctx.key.signed_version,                            // [9]  signedKeyVersion
-                ctx.authorized_user_object_id.unwrap_or(""), // [10] signedAuthorizedUserObjectId
-                ctx.unauthorized_user_object_id.unwrap_or(""), // [11] signedUnauthorizedUserObjectId
-                self.correlation_id.unwrap_or(""),             // [12] signedCorrelationId
-                ctx.ip.unwrap_or(""),                          // [13] signedIP
-                ctx.protocol.as_str(),                         // [14] signedProtocol
-                ctx.version,                                   // [15] signedVersion
-                self.sr,                                       // [16] signedResource
-                self.snapshot_time,                            // [17] signedSnapshotTime
-                self.encryption_scope.unwrap_or(""),           // [18] signedEncryptionScope
-                self.cache_control.unwrap_or(""),              // [19] rscc
-                self.content_disposition.unwrap_or(""),        // [20] rscd
-                self.content_encoding.unwrap_or(""),           // [21] rsce
-                self.content_language.unwrap_or(""),           // [22] rscl
-                self.content_type.unwrap_or(""),               // [23] rsct
-                self.signed_request_headers.unwrap_or(""),     // [24] srh
-                self.signed_request_query_parameters.unwrap_or(""), // [25] srq
-            ]
-            .join("\n")
-        )
+        // Fields [0]-[12] are common across all supported versions.
+        let mut fields: Vec<&str> = vec![
+            ctx.permissions,                               // [0]  signedPermissions
+            ctx.start,                                     // [1]  signedStart
+            ctx.expiry,                                    // [2]  signedExpiry
+            ctx.canon,                                     // [3]  canonicalizedResource
+            &ctx.key.signed_oid,                           // [4]  signedKeyObjectId
+            &ctx.key.signed_tid,                           // [5]  signedKeyTenantId
+            &ctx.key.signed_start,                         // [6]  signedKeyStart
+            &ctx.key.signed_expiry,                        // [7]  signedKeyExpiry
+            &ctx.key.signed_service,                       // [8]  signedKeyService
+            &ctx.key.signed_version,                       // [9]  signedKeyVersion
+            ctx.authorized_user_object_id.unwrap_or(""),   // [10] signedAuthorizedUserObjectId
+            ctx.unauthorized_user_object_id.unwrap_or(""), // [11] signedUnauthorizedUserObjectId
+            self.correlation_id.unwrap_or(""),             // [12] signedCorrelationId
+        ];
+        // YYYY-MM-DD strings sort lexicographically in chronological order, so >= is correct.
+        // 2025-07-05+: delegated user tenant/object IDs added before IP.
+        if ctx.version >= "2025-07-05" {
+            fields.push(ctx.delegated_user_tenant_id.unwrap_or("")); // [13] skdutid
+            fields.push(ctx.delegated_user_object_id.unwrap_or("")); // [14] sduoid
+        }
+        fields.extend_from_slice(&[
+            ctx.ip.unwrap_or(""),                   // [13/15] signedIP
+            ctx.protocol.as_str(),                  // [14/16] signedProtocol
+            ctx.version,                            // [15/17] signedVersion
+            self.sr,                                // [16/18] signedResource
+            self.snapshot_time,                     // [17/19] signedSnapshotTime
+            self.encryption_scope.unwrap_or(""),    // [18/20] signedEncryptionScope
+            self.cache_control.unwrap_or(""),       // [19/21] rscc
+            self.content_disposition.unwrap_or(""), // [20/22] rscd
+            self.content_encoding.unwrap_or(""),    // [21/23] rsce
+            self.content_language.unwrap_or(""),    // [22/24] rscl
+            self.content_type.unwrap_or(""),        // [23/25] rsct
+        ]);
+        // 2026-04-06+: required request headers/query params appended at the end.
+        if ctx.version >= "2026-04-06" {
+            fields.push(self.signed_request_headers.unwrap_or("")); // [24/26] srh
+            fields.push(self.signed_request_query_parameters.unwrap_or("")); // [25/27] srq
+        }
+        write!(f, "{}", fields.join("\n"))
     }
 }
 
@@ -331,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn test_blob_string_to_sign_has_26_fields() {
+    fn test_blob_string_to_sign_has_28_fields_for_2026_04_06() {
         let key = make_key();
         let resource = make_resource();
         let canon = resource.canonicalized_resource(ACCOUNT);
@@ -347,21 +355,62 @@ mod tests {
             authorized_user_object_id: None,
             unauthorized_user_object_id: None,
             delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
         let parts: Vec<&str> = s2s.split('\n').collect();
-        assert_eq!(parts.len(), 26, "blob string-to-sign must have 26 fields");
-        assert_eq!(parts[14], "https,http", "[14] signedProtocol");
         assert_eq!(
-            parts[15],
-            resource.default_api_version(),
-            "[15] signedVersion"
+            parts.len(),
+            28,
+            "blob string-to-sign must have 28 fields for 2026-04-06"
         );
-        assert_eq!(parts[16], "b", "[16] signedResource");
-        assert_eq!(parts[19], "", "[19] rscc — empty");
-        assert_eq!(parts[23], "", "[23] rsct — empty");
-        assert_eq!(parts[24], "", "[24] srh — empty");
-        assert_eq!(parts[25], "", "[25] srq — empty");
+        assert_eq!(parts[13], "", "[13] skdutid — empty");
+        assert_eq!(parts[14], "", "[14] sduoid — empty");
+        assert_eq!(parts[15], "", "[15] signedIP — empty");
+        assert_eq!(parts[16], "https,http", "[16] signedProtocol");
+        assert_eq!(
+            parts[17],
+            resource.default_api_version(),
+            "[17] signedVersion"
+        );
+        assert_eq!(parts[18], "b", "[18] signedResource");
+        assert_eq!(parts[21], "", "[21] rscc — empty");
+        assert_eq!(parts[25], "", "[25] rsct — empty");
+        assert_eq!(parts[26], "", "[26] srh — empty");
+        assert_eq!(parts[27], "", "[27] srq — empty");
+    }
+
+    #[test]
+    fn test_blob_string_to_sign_has_26_fields_for_2025_11_05() {
+        let key = make_key();
+        let resource = make_resource();
+        let canon = resource.canonicalized_resource(ACCOUNT);
+        let ctx = SasSigningContext {
+            permissions: "rw",
+            start: "2024-01-01T00:00:00Z",
+            expiry: "2024-01-08T00:00:00Z",
+            canon: &canon,
+            key: &key,
+            version: "2025-11-05",
+            ip: None,
+            protocol: Default::default(),
+            authorized_user_object_id: None,
+            unauthorized_user_object_id: None,
+            delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
+        };
+        let s2s = resource.string_to_sign(&ctx);
+        let parts: Vec<&str> = s2s.split('\n').collect();
+        assert_eq!(
+            parts.len(),
+            26,
+            "blob string-to-sign must have 26 fields for 2025-11-05"
+        );
+        assert_eq!(parts[13], "", "[13] skdutid — empty");
+        assert_eq!(parts[14], "", "[14] sduoid — empty");
+        assert_eq!(parts[16], "https,http", "[16] signedProtocol");
+        assert_eq!(parts[17], "2025-11-05", "[17] signedVersion");
+        assert_eq!(parts[18], "b", "[18] signedResource");
     }
 
     #[test]
@@ -381,6 +430,7 @@ mod tests {
             authorized_user_object_id: None,
             unauthorized_user_object_id: None,
             delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
         let sig = key.compute_signature(&s2s).unwrap();
@@ -429,10 +479,11 @@ mod tests {
             authorized_user_object_id: None,
             unauthorized_user_object_id: None,
             delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
         let parts: Vec<&str> = s2s.split('\n').collect();
-        assert_eq!(parts[13], "192.168.1.1", "[13] signedIP");
+        assert_eq!(parts[15], "192.168.1.1", "[15] signedIP");
     }
 
     #[test]
@@ -461,14 +512,15 @@ mod tests {
             authorized_user_object_id: None,
             unauthorized_user_object_id: None,
             delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
         let parts: Vec<&str> = s2s.split('\n').collect();
-        assert_eq!(parts[13], "10.0.0.1", "[13] signedIP");
-        assert_eq!(parts[18], "myscope", "[18] signedEncryptionScope");
-        assert_eq!(parts[19], "no-cache", "[19] rscc");
-        assert_eq!(parts[20], "", "[20] rscd — empty");
-        assert_eq!(parts[23], "application/octet-stream", "[23] rsct");
+        assert_eq!(parts[15], "10.0.0.1", "[15] signedIP");
+        assert_eq!(parts[20], "myscope", "[20] signedEncryptionScope");
+        assert_eq!(parts[21], "no-cache", "[21] rscc");
+        assert_eq!(parts[22], "", "[22] rscd — empty");
+        assert_eq!(parts[25], "application/octet-stream", "[25] rsct");
 
         let sig = key.compute_signature(&s2s).unwrap();
         let endpoint = Url::parse(&format!("https://{}.blob.core.windows.net", ACCOUNT)).unwrap();
@@ -524,11 +576,12 @@ mod tests {
             authorized_user_object_id: None,
             unauthorized_user_object_id: None,
             delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
         let parts: Vec<&str> = s2s.split('\n').collect();
-        assert_eq!(parts[24], "x-ms-date,x-ms-version", "[24] srh");
-        assert_eq!(parts[25], "comp,restype", "[25] srq");
+        assert_eq!(parts[26], "x-ms-date,x-ms-version", "[26] srh");
+        assert_eq!(parts[27], "comp,restype", "[27] srq");
 
         let sig = key.compute_signature(&s2s).unwrap();
         let endpoint = Url::parse(&format!("https://{}.blob.core.windows.net", ACCOUNT)).unwrap();

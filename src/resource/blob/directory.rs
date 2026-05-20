@@ -206,6 +206,7 @@ mod tests {
             authorized_user_object_id: None,
             unauthorized_user_object_id: None,
             delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
         let sig = key.compute_signature(&s2s).unwrap();

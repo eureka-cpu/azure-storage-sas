@@ -85,17 +85,17 @@ impl std::fmt::Display for TableStringToSign<'_> {
             f,
             "{}",
             [
-                ctx.permissions,                                            // [0]  signedPermissions
-                ctx.start,                                                  // [1]  signedStart
-                ctx.expiry,                                                 // [2]  signedExpiry
-                ctx.canon,               // [3]  canonicalizedResource
-                &ctx.key.signed_oid,     // [4]  signedKeyObjectId
-                &ctx.key.signed_tid,     // [5]  signedKeyTenantId
-                &ctx.key.signed_start,   // [6]  signedKeyStart
-                &ctx.key.signed_expiry,  // [7]  signedKeyExpiry
-                &ctx.key.signed_service, // [8]  signedKeyService
-                &ctx.key.signed_version, // [9]  signedKeyVersion
-                ctx.key.signed_delegated_user_tid.as_deref().unwrap_or(""), // [10] signedKeyDelegatedUserTenantId
+                ctx.permissions,                            // [0]  signedPermissions
+                ctx.start,                                  // [1]  signedStart
+                ctx.expiry,                                 // [2]  signedExpiry
+                ctx.canon,                                  // [3]  canonicalizedResource
+                &ctx.key.signed_oid,                        // [4]  signedKeyObjectId
+                &ctx.key.signed_tid,                        // [5]  signedKeyTenantId
+                &ctx.key.signed_start,                      // [6]  signedKeyStart
+                &ctx.key.signed_expiry,                     // [7]  signedKeyExpiry
+                &ctx.key.signed_service,                    // [8]  signedKeyService
+                &ctx.key.signed_version,                    // [9]  signedKeyVersion
+                ctx.delegated_user_tenant_id.unwrap_or(""), // [10] signedKeyDelegatedUserTenantId
                 ctx.delegated_user_object_id.unwrap_or(""), // [11] signedDelegatedUserObjectId
                 ctx.ip.unwrap_or(""),                       // [12] signedIP
                 ctx.protocol.as_str(),                      // [13] signedProtocol
@@ -201,6 +201,7 @@ mod tests {
             authorized_user_object_id: None,
             unauthorized_user_object_id: None,
             delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
         let parts: Vec<&str> = s2s.split('\n').collect();
@@ -234,6 +235,7 @@ mod tests {
             authorized_user_object_id: None,
             unauthorized_user_object_id: None,
             delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
         let sig = key.compute_signature(&s2s).unwrap();
@@ -290,6 +292,7 @@ mod tests {
             authorized_user_object_id: None,
             unauthorized_user_object_id: None,
             delegated_user_object_id: None,
+            delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
         let sig = key.compute_signature(&s2s).unwrap();

@@ -40,8 +40,6 @@ pub struct UserDelegationKey {
     pub signed_service: String,
     /// The REST API version that's used to get the user delegation key.
     pub signed_version: String,
-    /// A GUID that represents the Microsoft Entra tenant that the delegated user is from. Returns only when DelegatedUserTid is specified.
-    pub signed_delegated_user_tid: Option<String>,
     /// The user delegation key.
     pub value: String,
 }
@@ -50,9 +48,7 @@ impl UserDelegationKey {
     /// Fetches a user delegation key from the given storage service endpoint.
     ///
     /// `delegated_user_tid` is the tenant ID of the end user for cross-tenant scenarios.
-    /// When provided it is sent as `<DelegatedUserTid>` in the request body, and the
-    /// service returns `SignedDelegatedUserTid` in the response which is captured in
-    /// [`UserDelegationKey::signed_delegated_user_tid`].
+    /// When provided it is sent as `<DelegatedUserTid>` in the request body.
     pub(crate) async fn fetch(
         endpoint: &Url,
         signed_version: &str,
@@ -204,9 +200,9 @@ impl UserDelegationKeyFetcher {
 
     /// Sets the tenant ID of the delegated user for cross-tenant scenarios.
     ///
-    /// When provided, it is sent as `<DelegatedUserTid>` in the request body and the
-    /// service returns `SignedDelegatedUserTid` in the response, captured in
-    /// [`UserDelegationKey::signed_delegated_user_tid`].
+    /// When provided, it is sent as `<DelegatedUserTid>` in the `GetUserDelegationKey`
+    /// request body. Pass the same value as `delegated_user_tenant_id` on the SAS builder
+    /// to include it as `skdutid` in the signed token.
     pub fn delegated_user_tenant_id(mut self, tid: Uuid) -> Self {
         self.delegated_user_tenant_id = Some(tid);
         self
