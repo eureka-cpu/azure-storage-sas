@@ -107,20 +107,21 @@ impl sealed::Resource for DirectoryResource {
     }
     fn string_to_sign(&self, ctx: &SasSigningContext<'_>) -> String {
         let opts = self.options.as_ref();
+        let correlation_id = opts.and_then(|o| o.correlation_id).map(|id| id.to_string());
         BlobStringToSign {
             ctx,
             sr: "d",
             snapshot_time: "",
-            correlation_id: opts
-                .and_then(|o| o.correlation_id)
-                .map(|id| id.to_string())
-                .as_deref(),
+            correlation_id: correlation_id.as_deref(),
             encryption_scope: opts.and_then(|o| o.encryption_scope.as_deref()),
             cache_control: opts.and_then(|o| o.cache_control.as_deref()),
             content_disposition: opts.and_then(|o| o.content_disposition.as_deref()),
             content_encoding: opts.and_then(|o| o.content_encoding.as_deref()),
             content_language: opts.and_then(|o| o.content_language.as_deref()),
             content_type: opts.and_then(|o| o.content_type.as_deref()),
+            signed_request_headers: opts.and_then(|o| o.signed_request_headers.as_deref()),
+            signed_request_query_parameters: opts
+                .and_then(|o| o.signed_request_query_parameters.as_deref()),
         }
         .to_string()
     }
@@ -153,6 +154,12 @@ impl sealed::Resource for DirectoryResource {
         }
         if let Some(v) = opts.and_then(|o| o.content_type.as_deref()) {
             q.append_pair("rsct", v);
+        }
+        if let Some(v) = opts.and_then(|o| o.signed_request_headers.as_deref()) {
+            q.append_pair("srh", v);
+        }
+        if let Some(v) = opts.and_then(|o| o.signed_request_query_parameters.as_deref()) {
+            q.append_pair("srq", v);
         }
         if let Some(id) = opts.and_then(|o| o.correlation_id) {
             q.append_pair("scid", &id.to_string());
