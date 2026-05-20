@@ -119,9 +119,9 @@ impl sealed::Resource for DirectoryResource {
             content_encoding: opts.and_then(|o| o.content_encoding.as_deref()),
             content_language: opts.and_then(|o| o.content_language.as_deref()),
             content_type: opts.and_then(|o| o.content_type.as_deref()),
-            signed_request_headers: opts.and_then(|o| o.signed_request_headers.as_deref()),
+            signed_request_headers: opts.map_or(&[], |o| &o.signed_request_headers),
             signed_request_query_parameters: opts
-                .and_then(|o| o.signed_request_query_parameters.as_deref()),
+                .map_or(&[], |o| &o.signed_request_query_parameters),
         }
         .to_string()
     }
@@ -132,6 +132,8 @@ impl sealed::Resource for DirectoryResource {
             &format!("{}/{}", self.container, self.path),
         );
         let opts = self.options.as_ref();
+        let srh = opts.map_or(&[][..], |o| &o.signed_request_headers[..]);
+        let srq = opts.map_or(&[][..], |o| &o.signed_request_query_parameters[..]);
         let mut q = url.query_pairs_mut();
         q.append_pair("sv", params.version)
             .append_pair("sr", "d")
@@ -155,11 +157,16 @@ impl sealed::Resource for DirectoryResource {
         if let Some(v) = opts.and_then(|o| o.content_type.as_deref()) {
             q.append_pair("rsct", v);
         }
-        if let Some(v) = opts.and_then(|o| o.signed_request_headers.as_deref()) {
-            q.append_pair("srh", v);
+        if !srh.is_empty() {
+            let names: Vec<&str> = srh.iter().map(|(n, _)| n.as_str()).collect();
+            q.append_pair("srh", &names.join(","));
         }
-        if let Some(v) = opts.and_then(|o| o.signed_request_query_parameters.as_deref()) {
-            q.append_pair("srq", v);
+        if !srq.is_empty() {
+            let names: Vec<&str> = srq.iter().map(|(n, _)| n.as_str()).collect();
+            q.append_pair("srq", &names.join(","));
+            for (name, value) in srq {
+                q.append_pair(name, value);
+            }
         }
         if let Some(id) = opts.and_then(|o| o.correlation_id) {
             q.append_pair("scid", &id.to_string());
