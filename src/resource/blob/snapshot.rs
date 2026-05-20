@@ -54,6 +54,9 @@ impl sealed::Resource for BlobSnapshotResource {
             content_encoding: opts.and_then(|o| o.content_encoding.as_deref()),
             content_language: opts.and_then(|o| o.content_language.as_deref()),
             content_type: opts.and_then(|o| o.content_type.as_deref()),
+            signed_request_headers: opts.and_then(|o| o.signed_request_headers.as_deref()),
+            signed_request_query_parameters: opts
+                .and_then(|o| o.signed_request_query_parameters.as_deref()),
         }
         .to_string()
     }
@@ -86,6 +89,12 @@ impl sealed::Resource for BlobSnapshotResource {
         }
         if let Some(v) = opts.and_then(|o| o.content_type.as_deref()) {
             q.append_pair("rsct", v);
+        }
+        if let Some(v) = opts.and_then(|o| o.signed_request_headers.as_deref()) {
+            q.append_pair("srh", v);
+        }
+        if let Some(v) = opts.and_then(|o| o.signed_request_query_parameters.as_deref()) {
+            q.append_pair("srq", v);
         }
         if let Some(id) = opts.and_then(|o| o.correlation_id) {
             q.append_pair("scid", &id.to_string());
@@ -141,8 +150,8 @@ mod tests {
         let parts: Vec<&str> = s2s.split('\n').collect();
         assert_eq!(
             parts.len(),
-            24,
-            "blob snapshot string-to-sign must have 24 fields"
+            26,
+            "blob snapshot string-to-sign must have 26 fields"
         );
         assert_eq!(parts[16], "bs", "[16] signedResource");
         assert_eq!(

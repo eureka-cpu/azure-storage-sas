@@ -38,7 +38,7 @@ pub use snapshot::BlobSnapshotResource;
 pub use version::BlobVersionResource;
 
 /// Default API version for Blob Storage user delegation SAS tokens.
-pub const BLOB_DEFAULT_VERSION: &str = "2022-11-02";
+pub const BLOB_DEFAULT_VERSION: &str = "2026-04-06";
 
 pub(crate) fn format_blob_time(dt: OffsetDateTime) -> String {
     dt.format(format_description!(
@@ -161,6 +161,13 @@ pub struct BlobResourceOptions {
     pub content_language: Option<String>,
     /// Override `Content-Type` response header (`rsct`).
     pub content_type: Option<String>,
+    /// Required request headers (`srh`) — comma-separated header names that must be
+    /// present on the request when the SAS is used. Requires API version 2026-04-06+.
+    pub signed_request_headers: Option<String>,
+    /// Required request query parameters (`srq`) — comma-separated query parameter names
+    /// that must be present on the request when the SAS is used. Requires API version
+    /// 2026-04-06+.
+    pub signed_request_query_parameters: Option<String>,
 }
 
 /// https://learn.microsoft.com/en-us/rest/api/storageservices/create-user-delegation-sas#specify-query-parameters-to-override-response-headers-blob-storage-and-azure-files-only
@@ -175,6 +182,8 @@ pub(crate) struct BlobStringToSign<'a> {
     pub content_encoding: Option<&'a str>,
     pub content_language: Option<&'a str>,
     pub content_type: Option<&'a str>,
+    pub signed_request_headers: Option<&'a str>,
+    pub signed_request_query_parameters: Option<&'a str>,
 }
 
 impl std::fmt::Display for BlobStringToSign<'_> {
@@ -184,17 +193,17 @@ impl std::fmt::Display for BlobStringToSign<'_> {
             f,
             "{}",
             [
-                ctx.permissions,                               // [0]  signedPermissions
-                ctx.start,                                     // [1]  signedStart
-                ctx.expiry,                                    // [2]  signedExpiry
-                ctx.canon,                                     // [3]  canonicalizedResource
-                &ctx.key.signed_oid,                           // [4]  signedKeyObjectId
-                &ctx.key.signed_tid,                           // [5]  signedKeyTenantId
-                &ctx.key.signed_start,                         // [6]  signedKeyStart
-                &ctx.key.signed_expiry,                        // [7]  signedKeyExpiry
-                &ctx.key.signed_service,                       // [8]  signedKeyService
-                &ctx.key.signed_version,                       // [9]  signedKeyVersion
-                ctx.authorized_user_object_id.unwrap_or(""),   // [10] signedAuthorizedUserObjectId
+                ctx.permissions,                                    // [0]  signedPermissions
+                ctx.start,                                          // [1]  signedStart
+                ctx.expiry,                                         // [2]  signedExpiry
+                ctx.canon,                                          // [3]  canonicalizedResource
+                &ctx.key.signed_oid,                                // [4]  signedKeyObjectId
+                &ctx.key.signed_tid,                                // [5]  signedKeyTenantId
+                &ctx.key.signed_start,                              // [6]  signedKeyStart
+                &ctx.key.signed_expiry,                             // [7]  signedKeyExpiry
+                &ctx.key.signed_service,                            // [8]  signedKeyService
+                &ctx.key.signed_version,                            // [9]  signedKeyVersion
+                ctx.authorized_user_object_id.unwrap_or(""), // [10] signedAuthorizedUserObjectId
                 ctx.unauthorized_user_object_id.unwrap_or(""), // [11] signedUnauthorizedUserObjectId
                 self.correlation_id.unwrap_or(""),             // [12] signedCorrelationId
                 ctx.ip.unwrap_or(""),                          // [13] signedIP
@@ -208,6 +217,8 @@ impl std::fmt::Display for BlobStringToSign<'_> {
                 self.content_encoding.unwrap_or(""),           // [21] rsce
                 self.content_language.unwrap_or(""),           // [22] rscl
                 self.content_type.unwrap_or(""),               // [23] rsct
+                self.signed_request_headers.unwrap_or(""),     // [24] srh
+                self.signed_request_query_parameters.unwrap_or(""), // [25] srq
             ]
             .join("\n")
         )
@@ -251,6 +262,9 @@ impl sealed::Resource for BlobResource {
             content_encoding: opts.and_then(|o| o.content_encoding.as_deref()),
             content_language: opts.and_then(|o| o.content_language.as_deref()),
             content_type: opts.and_then(|o| o.content_type.as_deref()),
+            signed_request_headers: opts.and_then(|o| o.signed_request_headers.as_deref()),
+            signed_request_query_parameters: opts
+                .and_then(|o| o.signed_request_query_parameters.as_deref()),
         }
         .to_string()
     }
@@ -280,6 +294,12 @@ impl sealed::Resource for BlobResource {
         }
         if let Some(v) = opts.and_then(|o| o.content_type.as_deref()) {
             q.append_pair("rsct", v);
+        }
+        if let Some(v) = opts.and_then(|o| o.signed_request_headers.as_deref()) {
+            q.append_pair("srh", v);
+        }
+        if let Some(v) = opts.and_then(|o| o.signed_request_query_parameters.as_deref()) {
+            q.append_pair("srq", v);
         }
         if let Some(id) = opts.and_then(|o| o.correlation_id) {
             q.append_pair("scid", &id.to_string());
@@ -311,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    fn test_blob_string_to_sign_has_24_fields() {
+    fn test_blob_string_to_sign_has_26_fields() {
         let key = make_key();
         let resource = make_resource();
         let canon = resource.canonicalized_resource(ACCOUNT);
@@ -330,7 +350,7 @@ mod tests {
         };
         let s2s = resource.string_to_sign(&ctx);
         let parts: Vec<&str> = s2s.split('\n').collect();
-        assert_eq!(parts.len(), 24, "blob string-to-sign must have 24 fields");
+        assert_eq!(parts.len(), 26, "blob string-to-sign must have 26 fields");
         assert_eq!(parts[14], "https,http", "[14] signedProtocol");
         assert_eq!(
             parts[15],
@@ -340,6 +360,8 @@ mod tests {
         assert_eq!(parts[16], "b", "[16] signedResource");
         assert_eq!(parts[19], "", "[19] rscc — empty");
         assert_eq!(parts[23], "", "[23] rsct — empty");
+        assert_eq!(parts[24], "", "[24] srh — empty");
+        assert_eq!(parts[25], "", "[25] srq — empty");
     }
 
     #[test]
@@ -475,5 +497,62 @@ mod tests {
         assert!(!params.contains_key("rscd"));
         assert_eq!(params["rsct"], "application/octet-stream");
         assert_eq!(params["sip"], "10.0.0.1");
+    }
+
+    #[test]
+    fn test_blob_srh_srq_in_string_to_sign_and_url() {
+        let key = make_key();
+        let resource = BlobResource {
+            container: CONTAINER.to_string(),
+            blob: BLOB.to_string(),
+            options: Some(BlobResourceOptions {
+                signed_request_headers: Some("x-ms-date,x-ms-version".to_string()),
+                signed_request_query_parameters: Some("comp,restype".to_string()),
+                ..Default::default()
+            }),
+        };
+        let canon = resource.canonicalized_resource(ACCOUNT);
+        let ctx = SasSigningContext {
+            permissions: "r",
+            start: "2024-01-01T00:00:00Z",
+            expiry: "2024-01-08T00:00:00Z",
+            canon: &canon,
+            key: &key,
+            version: resource.default_api_version(),
+            ip: None,
+            protocol: Default::default(),
+            authorized_user_object_id: None,
+            unauthorized_user_object_id: None,
+            delegated_user_object_id: None,
+        };
+        let s2s = resource.string_to_sign(&ctx);
+        let parts: Vec<&str> = s2s.split('\n').collect();
+        assert_eq!(parts[24], "x-ms-date,x-ms-version", "[24] srh");
+        assert_eq!(parts[25], "comp,restype", "[25] srq");
+
+        let sig = key.compute_signature(&s2s).unwrap();
+        let endpoint = Url::parse(&format!("https://{}.blob.core.windows.net", ACCOUNT)).unwrap();
+        let url = resource
+            .sas_url(
+                &endpoint,
+                &SasUrlParams {
+                    permissions: "r",
+                    start: None,
+                    expiry: "2024-01-08T00:00:00Z",
+                    key: &key,
+                    signature: &sig,
+                    version: resource.default_api_version(),
+                    ip: None,
+                    protocol: Default::default(),
+                    authorized_user_object_id: None,
+                    unauthorized_user_object_id: None,
+                    delegated_user_object_id: None,
+                    delegated_user_tenant_id: None,
+                },
+            )
+            .unwrap();
+        let params = url_params(&url);
+        assert_eq!(params["srh"], "x-ms-date,x-ms-version");
+        assert_eq!(params["srq"], "comp,restype");
     }
 }
