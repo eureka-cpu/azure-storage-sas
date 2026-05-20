@@ -161,13 +161,19 @@ pub struct BlobResourceOptions {
     pub content_language: Option<String>,
     /// Override `Content-Type` response header (`rsct`).
     pub content_type: Option<String>,
-    /// Required request headers (`srh`) — comma-separated header names that must be
-    /// present on the request when the SAS is used. Requires API version 2026-04-06+.
-    pub signed_request_headers: Option<String>,
-    /// Required request query parameters (`srq`) — comma-separated query parameter names
-    /// that must be present on the request when the SAS is used. Requires API version
-    /// 2026-04-06+.
-    pub signed_request_query_parameters: Option<String>,
+    /// Required request headers (`srh`). Requires API version 2026-04-06+.
+    ///
+    /// Provide `(name, value)` pairs. The names are emitted as a comma-separated list in the
+    /// `srh` URL parameter; the values are locked into the signature via the canonicalized
+    /// `name:value\n` form. Every listed header must be present with exactly that value on
+    /// any request that uses this SAS.
+    pub signed_request_headers: Vec<(String, String)>,
+    /// Required request query parameters (`srq`). Requires API version 2026-04-06+.
+    ///
+    /// Provide `(name, value)` pairs. The names are emitted as a comma-separated list in the
+    /// `srq` URL parameter; the values are emitted as individual query parameters and locked
+    /// into the signature via the canonicalized `\nname=value` form.
+    pub signed_request_query_parameters: Vec<(String, String)>,
 }
 
 /// https://learn.microsoft.com/en-us/rest/api/storageservices/create-user-delegation-sas#specify-query-parameters-to-override-response-headers-blob-storage-and-azure-files-only
@@ -182,13 +188,28 @@ pub(crate) struct BlobStringToSign<'a> {
     pub content_encoding: Option<&'a str>,
     pub content_language: Option<&'a str>,
     pub content_type: Option<&'a str>,
-    pub signed_request_headers: Option<&'a str>,
-    pub signed_request_query_parameters: Option<&'a str>,
+    pub signed_request_headers: &'a [(String, String)],
+    pub signed_request_query_parameters: &'a [(String, String)],
 }
 
 impl std::fmt::Display for BlobStringToSign<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ctx = self.ctx;
+
+        // canonicalizedSignedRequestHeaders: "name:value\n" per header (spec §srh).
+        // canonicalizedSignedRequestQueryParameters: "\nname=value" per param (spec §srq).
+        // Both collapse to "" when the respective slice is empty.
+        let canonical_srh: String = self
+            .signed_request_headers
+            .iter()
+            .map(|(n, v)| format!("{}:{}\n", n, v))
+            .collect();
+        let canonical_srq: String = self
+            .signed_request_query_parameters
+            .iter()
+            .map(|(n, v)| format!("\n{}={}", n, v))
+            .collect();
+
         // Fields [0]-[12] are common across all supported versions.
         let mut fields: Vec<&str> = vec![
             ctx.permissions,                               // [0]  signedPermissions
@@ -212,23 +233,25 @@ impl std::fmt::Display for BlobStringToSign<'_> {
             fields.push(ctx.delegated_user_object_id.unwrap_or("")); // [14] sduoid
         }
         fields.extend_from_slice(&[
-            ctx.ip.unwrap_or(""),                   // [13/15] signedIP
-            ctx.protocol.as_str(),                  // [14/16] signedProtocol
-            ctx.version,                            // [15/17] signedVersion
-            self.sr,                                // [16/18] signedResource
-            self.snapshot_time,                     // [17/19] signedSnapshotTime
-            self.encryption_scope.unwrap_or(""),    // [18/20] signedEncryptionScope
-            self.cache_control.unwrap_or(""),       // [19/21] rscc
-            self.content_disposition.unwrap_or(""), // [20/22] rscd
-            self.content_encoding.unwrap_or(""),    // [21/23] rsce
-            self.content_language.unwrap_or(""),    // [22/24] rscl
-            self.content_type.unwrap_or(""),        // [23/25] rsct
+            ctx.ip.unwrap_or(""),                // [13/15] signedIP
+            ctx.protocol.as_str(),               // [14/16] signedProtocol
+            ctx.version,                         // [15/17] signedVersion
+            self.sr,                             // [16/18] signedResource
+            self.snapshot_time,                  // [17/19] signedSnapshotTime
+            self.encryption_scope.unwrap_or(""), // [18/20] signedEncryptionScope
         ]);
-        // 2026-04-06+: required request headers/query params appended at the end.
+        // 2026-04-06+: canonicalized srh/srq inserted BEFORE rscc per the spec ordering.
         if ctx.version >= "2026-04-06" {
-            fields.push(self.signed_request_headers.unwrap_or("")); // [24/26] srh
-            fields.push(self.signed_request_query_parameters.unwrap_or("")); // [25/27] srq
+            fields.push(&canonical_srh); // [21] canonicalizedSignedRequestHeaders
+            fields.push(&canonical_srq); // [22] canonicalizedSignedRequestQueryParameters
         }
+        fields.extend_from_slice(&[
+            self.cache_control.unwrap_or(""),       // [19/21/23] rscc
+            self.content_disposition.unwrap_or(""), // [20/22/24] rscd
+            self.content_encoding.unwrap_or(""),    // [21/23/25] rsce
+            self.content_language.unwrap_or(""),    // [22/24/26] rscl
+            self.content_type.unwrap_or(""),        // [23/25/27] rsct
+        ]);
         write!(f, "{}", fields.join("\n"))
     }
 }
@@ -270,9 +293,9 @@ impl sealed::Resource for BlobResource {
             content_encoding: opts.and_then(|o| o.content_encoding.as_deref()),
             content_language: opts.and_then(|o| o.content_language.as_deref()),
             content_type: opts.and_then(|o| o.content_type.as_deref()),
-            signed_request_headers: opts.and_then(|o| o.signed_request_headers.as_deref()),
+            signed_request_headers: opts.map_or(&[], |o| &o.signed_request_headers),
             signed_request_query_parameters: opts
-                .and_then(|o| o.signed_request_query_parameters.as_deref()),
+                .map_or(&[], |o| &o.signed_request_query_parameters),
         }
         .to_string()
     }
@@ -282,6 +305,8 @@ impl sealed::Resource for BlobResource {
             &format!("{}/{}", self.container, self.blob),
         );
         let opts = self.options.as_ref();
+        let srh = opts.map_or(&[][..], |o| &o.signed_request_headers[..]);
+        let srq = opts.map_or(&[][..], |o| &o.signed_request_query_parameters[..]);
         let mut q = url.query_pairs_mut();
         q.append_pair("sv", params.version).append_pair("sr", "b");
         append_common_sas_params(&mut q, params);
@@ -303,11 +328,16 @@ impl sealed::Resource for BlobResource {
         if let Some(v) = opts.and_then(|o| o.content_type.as_deref()) {
             q.append_pair("rsct", v);
         }
-        if let Some(v) = opts.and_then(|o| o.signed_request_headers.as_deref()) {
-            q.append_pair("srh", v);
+        if !srh.is_empty() {
+            let names: Vec<&str> = srh.iter().map(|(n, _)| n.as_str()).collect();
+            q.append_pair("srh", &names.join(","));
         }
-        if let Some(v) = opts.and_then(|o| o.signed_request_query_parameters.as_deref()) {
-            q.append_pair("srq", v);
+        if !srq.is_empty() {
+            let names: Vec<&str> = srq.iter().map(|(n, _)| n.as_str()).collect();
+            q.append_pair("srq", &names.join(","));
+            for (name, value) in srq {
+                q.append_pair(name, value);
+            }
         }
         if let Some(id) = opts.and_then(|o| o.correlation_id) {
             q.append_pair("scid", &id.to_string());
@@ -374,10 +404,10 @@ mod tests {
             "[17] signedVersion"
         );
         assert_eq!(parts[18], "b", "[18] signedResource");
-        assert_eq!(parts[21], "", "[21] rscc — empty");
-        assert_eq!(parts[25], "", "[25] rsct — empty");
-        assert_eq!(parts[26], "", "[26] srh — empty");
-        assert_eq!(parts[27], "", "[27] srq — empty");
+        assert_eq!(parts[21], "", "[21] srh — empty");
+        assert_eq!(parts[22], "", "[22] srq — empty");
+        assert_eq!(parts[23], "", "[23] rscc — empty");
+        assert_eq!(parts[27], "", "[27] rsct — empty");
     }
 
     #[test]
@@ -518,9 +548,11 @@ mod tests {
         let parts: Vec<&str> = s2s.split('\n').collect();
         assert_eq!(parts[15], "10.0.0.1", "[15] signedIP");
         assert_eq!(parts[20], "myscope", "[20] signedEncryptionScope");
-        assert_eq!(parts[21], "no-cache", "[21] rscc");
-        assert_eq!(parts[22], "", "[22] rscd — empty");
-        assert_eq!(parts[25], "application/octet-stream", "[25] rsct");
+        assert_eq!(parts[21], "", "[21] srh — empty");
+        assert_eq!(parts[22], "", "[22] srq — empty");
+        assert_eq!(parts[23], "no-cache", "[23] rscc");
+        assert_eq!(parts[24], "", "[24] rscd — empty");
+        assert_eq!(parts[27], "application/octet-stream", "[27] rsct");
 
         let sig = key.compute_signature(&s2s).unwrap();
         let endpoint = Url::parse(&format!("https://{}.blob.core.windows.net", ACCOUNT)).unwrap();
@@ -558,8 +590,14 @@ mod tests {
             container: CONTAINER.to_string(),
             blob: BLOB.to_string(),
             options: Some(BlobResourceOptions {
-                signed_request_headers: Some("x-ms-date,x-ms-version".to_string()),
-                signed_request_query_parameters: Some("comp,restype".to_string()),
+                signed_request_headers: vec![
+                    ("x-ms-date".into(), "Wed, 20 May 2026 12:00:00 GMT".into()),
+                    ("x-ms-version".into(), "2026-04-06".into()),
+                ],
+                signed_request_query_parameters: vec![
+                    ("comp".into(), "block".into()),
+                    ("restype".into(), "container".into()),
+                ],
                 ..Default::default()
             }),
         };
@@ -579,9 +617,15 @@ mod tests {
             delegated_user_tenant_id: None,
         };
         let s2s = resource.string_to_sign(&ctx);
-        let parts: Vec<&str> = s2s.split('\n').collect();
-        assert_eq!(parts[26], "x-ms-date,x-ms-version", "[26] srh");
-        assert_eq!(parts[27], "comp,restype", "[27] srq");
+        // canonical_srh embeds newlines so we can't use split; check via contains.
+        assert!(
+            s2s.contains("x-ms-date:Wed, 20 May 2026 12:00:00 GMT\nx-ms-version:2026-04-06\n"),
+            "[21] canonicalizedSignedRequestHeaders"
+        );
+        assert!(
+            s2s.contains("\ncomp=block\nrestype=container"),
+            "[22] canonicalizedSignedRequestQueryParameters"
+        );
 
         let sig = key.compute_signature(&s2s).unwrap();
         let endpoint = Url::parse(&format!("https://{}.blob.core.windows.net", ACCOUNT)).unwrap();
@@ -605,7 +649,10 @@ mod tests {
             )
             .unwrap();
         let params = url_params(&url);
+        // srh/srq list names; srq values are also individual URL params.
         assert_eq!(params["srh"], "x-ms-date,x-ms-version");
         assert_eq!(params["srq"], "comp,restype");
+        assert_eq!(params["comp"], "block");
+        assert_eq!(params["restype"], "container");
     }
 }

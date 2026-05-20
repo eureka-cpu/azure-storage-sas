@@ -109,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             container: CONTAINER.into(),
             blob: BLOB.into(),
             options: Some(BlobResourceOptions {
-                signed_request_headers: Some("x-ms-blob-type".into()),
+                signed_request_headers: vec![("x-ms-blob-type".into(), "BlockBlob".into())],
                 ..Default::default()
             }),
         },
