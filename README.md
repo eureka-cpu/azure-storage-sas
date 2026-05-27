@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> This was just a work-in-progress crate, please look to https://github.com/Azure/azure-sdk-for-rust repo for an official release.
+
 # azure_storage_sas
 
 User Delegation Shared Access Signature for Azure Storage.
